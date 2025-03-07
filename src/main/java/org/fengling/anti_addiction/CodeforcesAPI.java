@@ -237,17 +237,35 @@ public class CodeforcesAPI {
      *
      * @return 网页源代码字符串，如果获取失败则返回 null.
      */
-    public static String getMirrorCodeforcesPageSource() {
+    public static String getMirrorCodeforcesPageSource(String webPageUrl) {
         HttpClient client = HttpClient.newHttpClient();
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(MIRROR_CODEFORCES_URL))
+                .uri(URI.create(webPageUrl))
                 .build();
 
         try {
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-            return response.body();
+            String html = response.body();
+
+            StringBuilder textContent = new StringBuilder();
+            boolean inTag = false; // 标记当前是否在 HTML 标签内
+
+            for (int i = 0; i < html.length(); i++) {
+                char currentChar = html.charAt(i);
+
+                if (currentChar == '<') {
+                    inTag = true; // 进入 HTML 标签
+                } else if (currentChar == '>') {
+                    inTag = false; // 结束 HTML 标签
+                } else if (!inTag) {
+                    textContent.append(currentChar); // 如果不在 HTML 标签内，则将字符添加到文本内容中
+                }
+            }
+
+            return textContent.toString().trim(); // 返回提取的文本内容，并去除首尾空格
+
         } catch (IOException | InterruptedException e) {
-            Anti_addiction.LOGGER.error("Error fetching mirror.codeforces.com page source: {}", e.getMessage());
+            Anti_addiction.LOGGER.error("Error fetching webpage content from: {}", webPageUrl, e);
             return null;
         }
     }
@@ -309,12 +327,16 @@ public class CodeforcesAPI {
             }
         }
 
-        Anti_addiction.LOGGER.info("--- Mirror Codeforces Page Source Test ---"); // 添加 Mirror Codeforces 网页源代码测试
-        String mirrorPageSource = getMirrorCodeforcesPageSource();
-        if (mirrorPageSource != null) {
-            Anti_addiction.LOGGER.info("Mirror Codeforces Page Source (First 500 characters):\n{}", mirrorPageSource.substring(0, Math.min(500, mirrorPageSource.length()))); // 打印前 500 个字符
+        Anti_addiction.LOGGER.info("--- User Info Test ---"); // ...
+        Anti_addiction.LOGGER.info("--- Recent Contest List ---"); // ...
+        Anti_addiction.LOGGER.info("--- Mirror Codeforces Page Source Test ---"); // ...
+
+        String webpageUrl = "https://mirror.codeforces.com/"; // 测试 URL, 可以替换成其他网页
+        String webpageTextContentNoJsoup = getMirrorCodeforcesPageSource(webpageUrl);
+        if (webpageTextContentNoJsoup != null) {
+            Anti_addiction.LOGGER.info("Webpage Text Content (No Jsoup, First 500 characters):\n{}", webpageTextContentNoJsoup.substring(0, Math.min(500, webpageTextContentNoJsoup.length()))); // 打印前 500 个字符
         } else {
-            Anti_addiction.LOGGER.error("Failed to fetch mirror.codeforces.com page source.");
+            Anti_addiction.LOGGER.error("Failed to fetch webpage text content (No Jsoup) from: {}", webpageUrl);
         }
     }
 }
