@@ -413,6 +413,6 @@ public class CommandRegistry {
         // This is a placeholder, replace with your actual logic to get the PlayTimeKick instance
         // For example, if PlayTimeKick is a static instance in your main mod class:
         // return AntiAddictionMod.playTimeKickInstance;
-        return null; // Replace null with actual instance retrieval
+        return Anti_addiction.playTimeKick;
     }
 }

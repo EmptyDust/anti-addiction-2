@@ -1,6 +1,7 @@
 package org.fengling.anti_addiction;
 
 import com.mojang.logging.LogUtils;
+import net.minecraft.world.level.chunk.Palette;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.fml.common.Mod;
@@ -17,6 +18,8 @@ public class Anti_addiction
     // Directly reference a slf4j logger
     public static final Logger LOGGER = LogUtils.getLogger();
 
+    public static PlayTimeKick playTimeKick;
+
     private static Anti_addiction INSTANCE;
 
     public static Anti_addiction getInstance() {
@@ -27,13 +30,15 @@ public class Anti_addiction
     {
         INSTANCE = this;
 
+        playTimeKick = new PlayTimeKick();
+
         IEventBus modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
 
         // Register the commonSetup method for modloading
         modEventBus.addListener(this::commonSetup);
 
         // Register ourselves for server and other game events we are interested in
-        MinecraftForge.EVENT_BUS.register(new PlayTimeKick());
+        MinecraftForge.EVENT_BUS.register(playTimeKick);
         MinecraftForge.EVENT_BUS.register(new CommandRegistry());
     }
 
