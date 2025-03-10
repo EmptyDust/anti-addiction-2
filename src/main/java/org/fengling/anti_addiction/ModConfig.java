@@ -16,7 +16,7 @@ public class ModConfig {
     // Server configuration
     public static class ServerConfig {
         private boolean enableAntiAddiction = false; // 防沉迷功能默认关闭
-        private String aiChatServerAddress = "https://api.meguhx.top:50721/v1/chat/completions"; // 默认 AI 聊天服务器地址
+        private String aiChatServerAddress = "why.are.you.here"; // 默认 AI 聊天服务器地址
         private int maxPlayTimeMinutes = 60 * 4; // 最大游戏时间，默认 4 小时
         private String playtimeFilePath = "config/playtime.json"; // 游戏时间数据文件路径
         private String resetTime = "05:00:00"; // 每日重置时间，默认早上 5 点

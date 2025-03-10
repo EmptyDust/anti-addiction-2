@@ -17,7 +17,6 @@ public class ChatCommandHandler {
         this.commandRegistry = commandRegistry;
     }
 
-
     public int executeChatConfigSet(CommandSourceStack source, String url) {
         ModConfig config = ModConfig.loadConfig("config/mod_config.json");
         config.getServerConfig().setAiChatServerAddress(url);
