@@ -92,15 +92,9 @@ The mod uses a configuration file located at `config/mod_config.json`. You can e
 ## 📷 Screenshots
 
 <p align="center">
-  <img src="docs/images/playtime_warning.png" alt="Playtime Warning" width="400"/>
+  <img src="docs/images/agent.jpg" alt="Playtime Warning" width="400"/>
   <br>
-  <em>Playtime warning displayed to players</em>
-</p>
-
-<p align="center">
-  <img src="docs/images/codeforces_integration.png" alt="Codeforces Integration" width="400"/>
-  <br>
-  <em>Codeforces user info command</em>
+  <em>Query who has the highest rating in codeforces.</em>
 </p>
 
 ## ⚠️ Prerequisites
