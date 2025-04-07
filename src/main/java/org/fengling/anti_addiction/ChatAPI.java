@@ -5,6 +5,8 @@ import com.google.gson.JsonParseException;
 
 import java.io.IOException;
 import java.net.URI;
+import java.net.InetSocketAddress;
+import java.net.ProxySelector;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -15,78 +17,127 @@ import java.util.Map;
 
 public class ChatAPI {
 
-    private static final String DEFAULT_API_ENDPOINT = "whyAreUHere.AddMeQQ.hello"; // 默认 API 地址
-    private static final String API_KEY = "1422492074";
-
     // 存储对话上下文，可以使用 HashMap，key 可以是对话 ID (Player UUID), value 是 DialogueContext 对象
     static final Map<String, DialogueContext> dialogueContextMap = new HashMap<>();
 
-    public static String getChatReply(String model, String prompt) {
-        HttpClient client = HttpClient.newHttpClient();
+    // 创建HTTPClient，根据配置决定是否使用代理
+    private static HttpClient createHttpClient(ModConfig config) {
+        HttpClient.Builder clientBuilder = HttpClient.newBuilder();
+        
+        // 检查是否启用代理
+        if (config.getServerConfig().isUseProxy()) {
+            String proxyHost = config.getServerConfig().getProxyHost();
+            int proxyPort = config.getServerConfig().getProxyPort();
+            
+            // 确保代理主机名不为空
+            if (proxyHost != null && !proxyHost.isEmpty()) {
+                Anti_addiction.LOGGER.info("Using proxy: {}:{}", proxyHost, proxyPort);
+                clientBuilder.proxy(ProxySelector.of(new InetSocketAddress(proxyHost, proxyPort)));
+            } else {
+                Anti_addiction.LOGGER.warn("Proxy enabled but no proxy host specified, using direct connection");
+            }
+        }
+        
+        return clientBuilder.build();
+    }
 
+    public static String getChatReply(String model, String prompt) {
         // 从 ModConfig 加载配置
         ModConfig config = ModConfig.loadConfig("config/mod_config.json"); // 配置文件路径，请确保路径正确
         String apiEndpoint = config.getServerConfig().getAiChatServerAddress();
+        String apiKey = config.getServerConfig().getApiKey();
 
-        // 如果配置文件中没有设置 API 地址，则使用默认地址
-        if (apiEndpoint == null || apiEndpoint.trim().isEmpty()) {
-            apiEndpoint = DEFAULT_API_ENDPOINT;
+        // 创建可能带有代理设置的HttpClient
+        HttpClient client = createHttpClient(config);
+
+        Anti_addiction.LOGGER.info("Using API endpoint: {}", apiEndpoint);
+
+        // 使用 Gemini API 格式构建请求体
+        Map<String, Object> requestMap = new HashMap<>();
+        
+        // 创建 contents 数组
+        List<Map<String, Object>> contents = new ArrayList<>();
+        Map<String, Object> userMessage = new HashMap<>();
+        userMessage.put("role", "user");
+        
+        // 创建 parts 数组
+        List<Map<String, String>> parts = new ArrayList<>();
+        Map<String, String> textPart = new HashMap<>();
+        textPart.put("text", prompt);
+        parts.add(textPart);
+        
+        userMessage.put("parts", parts);
+        contents.add(userMessage);
+        
+        requestMap.put("contents", contents);
+        
+        Gson gson = new Gson();
+        String requestBody = gson.toJson(requestMap);
+        
+        Anti_addiction.LOGGER.info("Request body: {}", requestBody);
+        
+        // Append API key to the URL if available
+        String finalEndpoint = apiEndpoint;
+        if (apiKey != null && !apiKey.trim().isEmpty()) {
+            finalEndpoint += "?key=" + apiKey;
         }
-
-        Anti_addiction.LOGGER.info(apiEndpoint);
-
-        // 构建请求体（JSON 格式）
-        String requestBody = String.format("{\"model\": \"%s\",\"messages\": [{\"role\": \"user\", \"content\": \"%s\"}]}", model, prompt);
-        Anti_addiction.LOGGER.info(requestBody);
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(apiEndpoint)) // 使用从配置中获取的 API 地址
-                .header("Content-Type", "application/json")
-                .header("Authorization", "Bearer " + API_KEY)
+        
+        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
+                .uri(URI.create(finalEndpoint))
+                .header("Content-Type", "application/json");
+        
+        HttpRequest request = requestBuilder
                 .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                 .build();
 
-        Anti_addiction.LOGGER.info(request.toString());
+        Anti_addiction.LOGGER.info("Request: {}", request);
 
         try {
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString()); // 同步请求
             int statusCode = response.statusCode();
-            Anti_addiction.LOGGER.info("Response code: " + statusCode);
+            Anti_addiction.LOGGER.info("Response code: {}", statusCode);
             String responseBodyString = response.body();
-            Anti_addiction.LOGGER.info("Response body: " + responseBodyString);
+            Anti_addiction.LOGGER.info("Response body: {}", responseBodyString);
 
             if (statusCode >= 200 && statusCode < 300) {
                 try {
-                    Gson gson = new Gson();
                     Map<String, Object> responseJson = gson.fromJson(responseBodyString, Map.class);
 
-                    List<Map<String, Object>> choicesArray = (List<Map<String, Object>>) responseJson.get("choices");
-                    if (choicesArray != null && !choicesArray.isEmpty()) {
-                        Map<String, Object> firstChoice = choicesArray.get(0);
-                        Map<String, Object> message = (Map<String, Object>) firstChoice.get("message");
-                        if (message != null) {
-                            String aiReply = (String) message.get("content");
-                            return aiReply != null ? aiReply.trim() : null;
+                    // Gemini API 使用 candidates 而不是 choices
+                    List<Map<String, Object>> candidates = (List<Map<String, Object>>) responseJson.get("candidates");
+                    if (candidates != null && !candidates.isEmpty()) {
+                        Map<String, Object> firstCandidate = candidates.get(0);
+                        Map<String, Object> content = (Map<String, Object>) firstCandidate.get("content");
+                        if (content != null) {
+                            List<Map<String, Object>> contentParts = (List<Map<String, Object>>) content.get("parts");
+                            if (contentParts != null && !contentParts.isEmpty()) {
+                                String aiReply = (String) contentParts.get(0).get("text");
+                                return aiReply != null ? aiReply.trim() : null;
+                            } else {
+                                Anti_addiction.LOGGER.info("API 响应中 parts 字段为空");
+                                return null;
+                            }
                         } else {
-                            Anti_addiction.LOGGER.info("API 响应中 message 字段为空");
+                            Anti_addiction.LOGGER.info("API 响应中 content 字段为空");
                             return null;
                         }
                     } else {
-                        Anti_addiction.LOGGER.info("API 响应中没有 choices 字段或为空");
+                        Anti_addiction.LOGGER.info("API 响应中没有 candidates 字段或为空");
                         return null;
                     }
                 } catch (JsonParseException e) {
-                    Anti_addiction.LOGGER.info("JSON 解析异常: " + e.getMessage());
-                    Anti_addiction.LOGGER.error("JSON 解析异常: " + e.getMessage(),e);
+                    Anti_addiction.LOGGER.info("JSON 解析异常: {}", e.getMessage());
+                    Anti_addiction.LOGGER.error("JSON 解析异常: {}", e.getMessage(), e);
                     return null;
                 }
             } else {
-                Anti_addiction.LOGGER.error("API call failed. Status code: " + statusCode);
-                Anti_addiction.LOGGER.error("Response body: " + responseBodyString);
+                Anti_addiction.LOGGER.error("API call failed. Status code: {}", statusCode);
+                Anti_addiction.LOGGER.error("Response body: {}", responseBodyString);
                 return null;
             }
 
         } catch (IOException | InterruptedException e) {
-            Anti_addiction.LOGGER.info("internet request error: " + e.getMessage());
+            Anti_addiction.LOGGER.info("internet request error: {}", e.getMessage());
             Anti_addiction.LOGGER.error("internet request error: {}", e.getMessage(), e);
             return null;
         }
@@ -97,174 +148,239 @@ public class ChatAPI {
 
         context.addUserMessage(prompt); // 添加用户消息到上下文
 
-        HttpClient client = HttpClient.newHttpClient();
-
-        // 从 ModConfig 加载配置 (这里可以复用 getChatReply 中的配置加载逻辑，如果需要的话)
+        // 从 ModConfig 加载配置
         ModConfig config = ModConfig.loadConfig("config/mod_config.json");
         String apiEndpoint = config.getServerConfig().getAiChatServerAddress();
+        String apiKey = config.getServerConfig().getApiKey();
 
-        if (apiEndpoint == null || apiEndpoint.trim().isEmpty()) {
-            apiEndpoint = DEFAULT_API_ENDPOINT;
+        // 创建可能带有代理设置的HttpClient
+        HttpClient client = createHttpClient(config);
+
+        Anti_addiction.LOGGER.info("Using API endpoint: {}", apiEndpoint);
+
+        // 使用 Gemini API 格式构建请求体
+        Map<String, Object> requestMap = new HashMap<>();
+        requestMap.put("contents", context.getContents());
+        
+        Gson gson = new Gson();
+        String requestBody = gson.toJson(requestMap);
+        
+        Anti_addiction.LOGGER.info("Request body: {}", requestBody);
+
+        // Append API key to the URL if available
+        String finalEndpoint = apiEndpoint;
+        if (apiKey != null && !apiKey.trim().isEmpty()) {
+            finalEndpoint += "?key=" + apiKey;
         }
-        Anti_addiction.LOGGER.info(apiEndpoint);
-
-        // 构建包含完整对话历史的请求体
-        String requestBody = buildDialogueRequestBody(model, context.getMessages());
-        Anti_addiction.LOGGER.info(requestBody);
-
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(apiEndpoint))
-                .header("Content-Type", "application/json")
-                .header("Authorization", "Bearer " + API_KEY)
+        
+        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
+                .uri(URI.create(finalEndpoint))
+                .header("Content-Type", "application/json");
+        
+        HttpRequest request = requestBuilder
                 .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                 .build();
-        Anti_addiction.LOGGER.info(request.toString());
+
+        Anti_addiction.LOGGER.info("Request: {}", request);
 
         try {
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
             int statusCode = response.statusCode();
-            Anti_addiction.LOGGER.info("Response code: " + statusCode);
+            Anti_addiction.LOGGER.info("Response code: {}", statusCode);
             String responseBodyString = response.body();
-            Anti_addiction.LOGGER.info("Response body: " + responseBodyString);
+            Anti_addiction.LOGGER.info("Response body: {}", responseBodyString);
 
             if (statusCode >= 200 && statusCode < 300) {
                 try {
-                    Gson gson = new Gson();
                     Map<String, Object> responseJson = gson.fromJson(responseBodyString, Map.class);
 
-                    List<Map<String, Object>> choicesArray = (List<Map<String, Object>>) responseJson.get("choices");
-                    if (choicesArray != null && !choicesArray.isEmpty()) {
-                        Map<String, Object> firstChoice = choicesArray.get(0);
-                        Map<String, Object> message = (Map<String, Object>) firstChoice.get("message");
-                        if (message != null) {
-                            String aiReply = (String) message.get("content");
-                            if (aiReply != null) {
-                                String trimmedReply = aiReply.trim();
-                                context.addAssistantMessage(trimmedReply); // 添加 AI 回复到上下文
-                                return trimmedReply;
+                    // Gemini API 使用 candidates 而不是 choices
+                    List<Map<String, Object>> candidates = (List<Map<String, Object>>) responseJson.get("candidates");
+                    if (candidates != null && !candidates.isEmpty()) {
+                        Map<String, Object> firstCandidate = candidates.get(0);
+                        Map<String, Object> content = (Map<String, Object>) firstCandidate.get("content");
+                        if (content != null) {
+                            List<Map<String, Object>> contentParts = (List<Map<String, Object>>) content.get("parts");
+                            if (contentParts != null && !contentParts.isEmpty()) {
+                                String aiReply = (String) contentParts.get(0).get("text");
+                                if (aiReply != null) {
+                                    String trimmedReply = aiReply.trim();
+                                    context.addModelMessage(trimmedReply); // 添加 AI 回复到上下文
+                                    return trimmedReply;
+                                } else {
+                                    Anti_addiction.LOGGER.info("API 响应 text 内容为空");
+                                    return null;
+                                }
                             } else {
-                                Anti_addiction.LOGGER.info("API 响应 message 内容为空");
+                                Anti_addiction.LOGGER.info("API 响应中 parts 字段为空");
                                 return null;
                             }
                         } else {
-                            Anti_addiction.LOGGER.info("API 响应中 message 字段为空");
+                            Anti_addiction.LOGGER.info("API 响应中 content 字段为空");
                             return null;
                         }
                     } else {
-                        Anti_addiction.LOGGER.info("API 响应中没有 choices 字段或为空");
+                        Anti_addiction.LOGGER.info("API 响应中没有 candidates 字段或为空");
                         return null;
                     }
                 } catch (JsonParseException e) {
-                    Anti_addiction.LOGGER.info("JSON 解析异常: " + e.getMessage());
-                    Anti_addiction.LOGGER.error("JSON 解析异常: " + e.getMessage(),e);
+                    Anti_addiction.LOGGER.info("JSON 解析异常: {}", e.getMessage());
+                    Anti_addiction.LOGGER.error("JSON 解析异常: {}", e.getMessage(),e);
                     return null;
                 }
             } else {
-                Anti_addiction.LOGGER.error("API call failed. Status code: " + statusCode);
-                Anti_addiction.LOGGER.error("Response body: " + responseBodyString);
+                Anti_addiction.LOGGER.error("API call failed. Status code: {}", statusCode);
+                Anti_addiction.LOGGER.error("Response body: {}", responseBodyString);
                 return null;
             }
 
         } catch (IOException | InterruptedException e) {
-            Anti_addiction.LOGGER.info("internet request error: " + e.getMessage());
+            Anti_addiction.LOGGER.info("internet request error: {}", e.getMessage());
             Anti_addiction.LOGGER.error("internet request error: {}", e.getMessage(), e);
             return null;
         }
     }
 
-
-    private static String buildDialogueRequestBody(String model, List<Map<String, String>> messages) {
+    private static String buildDialogueRequestBody(String model, List<Map<String, Object>> contents) {
         // 使用 Gson 库更方便地构建 JSON
         Gson gson = new Gson();
         Map<String, Object> requestBodyMap = new HashMap<>();
-        requestBodyMap.put("model", model);
-        requestBodyMap.put("messages", messages);
+        requestBodyMap.put("contents", contents);
         return gson.toJson(requestBodyMap);
     }
 
-
     public static void main(String[] args) {
-        String modelName = "Gemini-Thinking"; // Specify the model name here
-
-        // 简单的单次对话测试 (仍然可用)
-        String userPrompt = "good morning";
-        String aiReply = ChatAPI.getChatReply(modelName, userPrompt);
-        if (aiReply != null) {
-            Anti_addiction.LOGGER.info("AI response (Single turn): " + aiReply);
-        } else {
-            Anti_addiction.LOGGER.info("获取 AI 回复失败 (Single turn)");
+        // 从终端读取API密钥
+        System.out.println("请输入Gemini API Key (不输入则使用配置文件中的密钥):");
+        String inputApiKey = null;
+        try {
+            java.util.Scanner scanner = new java.util.Scanner(System.in);
+            inputApiKey = scanner.nextLine().trim();
+        } catch (Exception e) {
+            System.out.println("读取输入失败，将使用配置文件中的API Key");
         }
 
-        // 多轮对话测试 - Player 1
-        String player1DialogueId = "player1"; // 使用玩家ID或唯一标识符作为 dialogueId
-        String replyP1_1 = ChatAPI.getDialogueReply(modelName, "Hello, how are you?", player1DialogueId);
-        if (replyP1_1 != null) {
-            Anti_addiction.LOGGER.info("Player 1 AI (Round 1): " + replyP1_1);
+        // 设置模型名称
+        String modelName = "gemini-pro"; // 使用正确的模型名称
+        
+        // 加载配置
+        ModConfig config = ModConfig.loadConfig("config/mod_config.json");
+        
+        // 如果用户输入了API Key，则覆盖配置文件中的设置
+        if (inputApiKey != null && !inputApiKey.isEmpty()) {
+            config.getServerConfig().setApiKey(inputApiKey);
+            System.out.println("正在使用输入的API Key进行测试");
         } else {
-            Anti_addiction.LOGGER.info("获取 Player 1 AI 回复失败 (Round 1)");
+            System.out.println("正在使用配置文件中的API Key进行测试");
         }
 
-        String replyP1_2 = ChatAPI.getDialogueReply(modelName, "Tell me a joke.", player1DialogueId); // 同一个 dialogueId，继续对话 Player 1
-        if (replyP1_2 != null) {
-            Anti_addiction.LOGGER.info("Player 1 AI (Round 2): " + replyP1_2);
-        } else {
-            Anti_addiction.LOGGER.info("获取 Player 1 AI 回复失败 (Round 2)");
+        // 询问用户使用哪种测试模式
+        System.out.println("请选择测试类型 (1: 单次对话, 2: 多轮对话测试):");
+        int testType = 1; // 默认为单次对话
+        try {
+            java.util.Scanner scanner = new java.util.Scanner(System.in);
+            testType = Integer.parseInt(scanner.nextLine().trim());
+        } catch (Exception e) {
+            System.out.println("输入无效，将使用单次对话测试");
         }
 
-        // 多轮对话测试 - Player 2 (不同的 dialogueId)
-        String player2DialogueId = "player2"; // 为 Player 2 使用不同的 dialogueId
-        String replyP2_1 = ChatAPI.getDialogueReply(modelName, "Hi AI, what's the weather like today?", player2DialogueId);
-        if (replyP2_1 != null) {
-            Anti_addiction.LOGGER.info("Player 2 AI (Round 1): " + replyP2_1);
+        if (testType == 1) {
+            // 单次对话测试
+            System.out.println("请输入要发送给AI的消息:");
+            try {
+                java.util.Scanner scanner = new java.util.Scanner(System.in);
+                String userPrompt = scanner.nextLine();
+                
+                System.out.println("正在发送请求，请稍候...");
+                String aiReply = ChatAPI.getChatReply(modelName, userPrompt);
+                
+                if (aiReply != null) {
+                    System.out.println("\nAI回复:\n" + aiReply);
+                } else {
+                    System.out.println("\n获取AI回复失败，请检查API Key是否正确或查看日志");
+                }
+            } catch (Exception e) {
+                System.out.println("测试过程中出现错误: " + e.getMessage());
+                e.printStackTrace();
+            }
         } else {
-            Anti_addiction.LOGGER.info("获取 Player 2 AI 回复失败 (Round 1)");
+            // 多轮对话测试
+            testDialogueChat(modelName);
         }
-
-        String replyP2_2 = ChatAPI.getDialogueReply(modelName, "Thanks!", player2DialogueId); // 继续对话 Player 2，使用 player2DialogueId
-        if (replyP2_2 != null) {
-            Anti_addiction.LOGGER.info("Player 2 AI (Round 2): " + replyP2_2);
-        } else {
-            Anti_addiction.LOGGER.info("获取 Player 2 AI 回复失败 (Round 2)");
-        }
-
-        // 再次 Player 1 对话，验证上下文隔离
-        String replyP1_3 = ChatAPI.getDialogueReply(modelName, "Thanks!", player1DialogueId); // 继续 Player 1 对话
-        if (replyP1_3 != null) {
-            Anti_addiction.LOGGER.info("Player 1 AI (Round 3): " + replyP1_3);
-        } else {
-            Anti_addiction.LOGGER.info("获取 Player 1 AI 回复失败 (Round 3)");
+    }
+    
+    private static void testDialogueChat(String modelName) {
+        try {
+            String dialogueId = "test-" + System.currentTimeMillis();
+            java.util.Scanner scanner = new java.util.Scanner(System.in);
+            System.out.println("\n开始多轮对话测试，输入'exit'结束对话");
+            
+            while (true) {
+                System.out.print("\n用户: ");
+                String userInput = scanner.nextLine().trim();
+                
+                if ("exit".equalsIgnoreCase(userInput)) {
+                    System.out.println("对话结束");
+                    break;
+                }
+                
+                System.out.println("正在等待AI回复...");
+                String aiReply = getDialogueReply(modelName, userInput, dialogueId);
+                
+                if (aiReply != null) {
+                    System.out.println("\nAI: " + aiReply);
+                } else {
+                    System.out.println("\n获取AI回复失败，请检查API Key是否正确或查看日志");
+                    break;
+                }
+            }
+        } catch (Exception e) {
+            System.out.println("多轮对话测试过程中出现错误: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 }
 
 
-// DialogueContext 类保持不变
+// 修改 DialogueContext 类以适应 Gemini API 格式
 class DialogueContext {
-    private List<Map<String, String>> messages;
+    private List<Map<String, Object>> contents;
 
     public DialogueContext() {
-        this.messages = new ArrayList<>();
+        this.contents = new ArrayList<>();
     }
 
-    public List<Map<String, String>> getMessages() {
-        return messages;
+    public List<Map<String, Object>> getContents() {
+        return contents;
     }
 
-    public void addUserMessage(String content) {
-        Map<String, String> message = new HashMap<>();
+    public void addUserMessage(String text) {
+        Map<String, Object> message = new HashMap<>();
         message.put("role", "user");
-        message.put("content", content);
-        this.messages.add(message);
+        
+        List<Map<String, String>> parts = new ArrayList<>();
+        Map<String, String> textPart = new HashMap<>();
+        textPart.put("text", text);
+        parts.add(textPart);
+        
+        message.put("parts", parts);
+        this.contents.add(message);
     }
 
-    public void addAssistantMessage(String content) {
-        Map<String, String> message = new HashMap<>();
-        message.put("role", "assistant");
-        message.put("content", content);
-        this.messages.add(message);
+    public void addModelMessage(String text) {
+        Map<String, Object> message = new HashMap<>();
+        message.put("role", "model");  // Gemini API 使用 "model" 而不是 "assistant"
+        
+        List<Map<String, String>> parts = new ArrayList<>();
+        Map<String, String> textPart = new HashMap<>();
+        textPart.put("text", text);
+        parts.add(textPart);
+        
+        message.put("parts", parts);
+        this.contents.add(message);
     }
 
     public void clearMessages() {
-        this.messages.clear();
+        this.contents.clear();
     }
 }

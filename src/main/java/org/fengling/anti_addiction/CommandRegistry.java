@@ -28,8 +28,8 @@ public class CommandRegistry {
         codeforcesCommandHandler = new CodeforcesCommandHandler(this);
         chatCommandHandler = new ChatCommandHandler(this);
 
-        // Root command /aa and alias /anti_addiction
-        LiteralArgumentBuilder<CommandSourceStack> antiAddictionCommand = Commands.literal("anti_addiction");
+        // Root command /aa and alias /antiaddiction (renamed from anti_addiction)
+        LiteralArgumentBuilder<CommandSourceStack> antiaddictionCommand = Commands.literal("antiaddiction");
         LiteralArgumentBuilder<CommandSourceStack> aaCommand = Commands.literal("aa");
 
         // Playtime commands under /aa playtime
@@ -37,6 +37,7 @@ public class CommandRegistry {
 
         // /aa playtime set <targets> <playtime>
         playtimeCommand.then(Commands.literal("set")
+                .requires(source -> source.hasPermission(3)) // Admin permission
                 .then(Commands.argument("targets", EntityArgument.players())
                         .then(Commands.argument("playtime", IntegerArgumentType.integer(0))
                                 .executes(ctx -> playtimeCommandHandler.executePlaytimeSet(ctx.getSource(), (List<ServerPlayer>) EntityArgument.getPlayers(ctx, "targets"), IntegerArgumentType.getInteger(ctx, "playtime")))
@@ -54,6 +55,7 @@ public class CommandRegistry {
 
         // /aa playtime clear <targets>
         playtimeCommand.then(Commands.literal("clear")
+                .requires(source -> source.hasPermission(3)) // Admin permission
                 .then(Commands.argument("targets", EntityArgument.players())
                         .executes(ctx -> playtimeCommandHandler.executePlaytimeClear(ctx.getSource(), (List<ServerPlayer>) EntityArgument.getPlayers(ctx, "targets")))
                 )
@@ -66,10 +68,10 @@ public class CommandRegistry {
         );
 
         aaCommand.then(playtimeCommand); // Nest playtime commands under /aa
-        antiAddictionCommand.redirect(aaCommand.build()); // Alias /anti_addiction to /aa
+        antiaddictionCommand.redirect(aaCommand.build()); // Alias /antiaddiction to /aa
 
         event.getDispatcher().register(aaCommand);
-        event.getDispatcher().register(antiAddictionCommand);
+        event.getDispatcher().register(antiaddictionCommand);
 
 
         // Create /codeforces command (remains as /cf for short)
@@ -104,13 +106,6 @@ public class CommandRegistry {
         // Create /chat command
         LiteralArgumentBuilder<CommandSourceStack> chatCommand = Commands.literal("chat");
 
-        // Add /chat grok subcommand (now repurposed for Gemini with deprecation message)
-        chatCommand.then(Commands.literal("grok")
-                .then(Commands.argument("content", StringArgumentType.string())
-                        .executes(context -> chatCommandHandler.executeAiQuery(context.getSource(), StringArgumentType.getString(context, "content"), "Grok-2", false)) // Grok-2 defaults to single turn
-                )
-        );
-
         // Modify /chat gemini subcommand
         chatCommand.then(Commands.literal("gemini")
                 .then(Commands.argument("content", StringArgumentType.string())
@@ -121,22 +116,42 @@ public class CommandRegistry {
                 )
         );
 
-        // Add /chat config subcommand
+        // Add /chat config subcommand with renamed set_url
         chatCommand.then(Commands.literal("config")
                 .requires(source -> source.hasPermission(4)) // Requires OP permission
-                .then(Commands.literal("set")
+                .then(Commands.literal("set_url") // Renamed from "set"
                         .then(Commands.argument("url", StringArgumentType.string())
-                                .executes(context -> chatCommandHandler.executeChatConfigSet(context.getSource(), StringArgumentType.getString(context, "url"))))));
+                                .executes(context -> chatCommandHandler.executeChatConfigSet(context.getSource(), StringArgumentType.getString(context, "url")))))
+                .then(Commands.literal("set_key")
+                        .then(Commands.argument("apiKey", StringArgumentType.string())
+                                .executes(context -> chatCommandHandler.executeChatConfigSetApiKey(context.getSource(), StringArgumentType.getString(context, "apiKey"))))));
+                
+        // Add /chat proxy subcommand (moved from ProxyCommands)
+        chatCommand.then(Commands.literal("proxy")
+                .requires(source -> source.hasPermission(3)) // Admin permission
+                .then(Commands.literal("enable")
+                    .then(Commands.argument("enable", BoolArgumentType.bool())
+                        .executes(context -> chatCommandHandler.executeChatProxyEnable(context.getSource(), BoolArgumentType.getBool(context, "enable"))))
+                )
+                .then(Commands.literal("host")
+                    .then(Commands.argument("host", StringArgumentType.string())
+                        .executes(context -> chatCommandHandler.executeChatProxyHost(context.getSource(), StringArgumentType.getString(context, "host"))))
+                )
+                .then(Commands.literal("port")
+                    .then(Commands.argument("port", IntegerArgumentType.integer(1, 65535))
+                        .executes(context -> chatCommandHandler.executeChatProxyPort(context.getSource(), IntegerArgumentType.getInteger(context, "port"))))
+                )
+                .then(Commands.literal("status")
+                    .executes(context -> chatCommandHandler.executeChatProxyStatus(context.getSource())))
+        );
 
         // Add /chat clear subcommand
         chatCommand.then(Commands.literal("clear")
                 .executes(context -> chatCommandHandler.executeChatClear(context.getSource())));
 
-
         // Register /chat command
         event.getDispatcher().register(chatCommand);
     }
-
 
     // --- Helper Methods (Keep in CommandRegistry) ---
     public void sendErrorMessage(CommandSourceStack source, String message) {

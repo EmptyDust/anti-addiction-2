@@ -26,6 +26,16 @@ public class ChatCommandHandler {
         Anti_addiction.LOGGER.info("Chat API Server URL set to: {}", url);
         return 1;
     }
+    
+    public int executeChatConfigSetApiKey(CommandSourceStack source, String apiKey) {
+        ModConfig config = ModConfig.loadConfig("config/mod_config.json");
+        config.getServerConfig().setApiKey(apiKey);
+        config.saveConfig("config/mod_config.json");
+
+        source.sendSystemMessage(Component.literal("Chat API Key set successfully").withStyle(ChatFormatting.GREEN));
+        Anti_addiction.LOGGER.info("Chat API Key set successfully");
+        return 1;
+    }
 
     public int executeAiQuery(CommandSourceStack source, String content, final String modelName, boolean useDialogue) {
         if (content == null || content.trim().isEmpty()) {
@@ -93,6 +103,67 @@ public class ChatCommandHandler {
         } else {
             source.sendSystemMessage(Component.literal("No chat history to clear.").withStyle(ChatFormatting.YELLOW));
         }
+        return 1;
+    }
+    
+    // --- Proxy Command Methods ---
+    public int executeChatProxyEnable(CommandSourceStack source, boolean enable) {
+        // Load the current config
+        ModConfig config = ModConfig.loadConfig("config/mod_config.json");
+        
+        // Set the proxy enabled status
+        config.getServerConfig().setUseProxy(enable);
+        
+        // Save the config
+        config.saveConfig("config/mod_config.json");
+        
+        source.sendSuccess(() -> Component.literal("Proxy " + (enable ? "enabled" : "disabled")), true);
+        return 1;
+    }
+    
+    public int executeChatProxyHost(CommandSourceStack source, String host) {
+        // Load the current config
+        ModConfig config = ModConfig.loadConfig("config/mod_config.json");
+        
+        // Set the proxy host
+        config.getServerConfig().setProxyHost(host);
+        
+        // Save the config
+        config.saveConfig("config/mod_config.json");
+        
+        source.sendSuccess(() -> Component.literal("Proxy host set to: " + host), true);
+        return 1;
+    }
+    
+    public int executeChatProxyPort(CommandSourceStack source, int port) {
+        // Load the current config
+        ModConfig config = ModConfig.loadConfig("config/mod_config.json");
+        
+        // Set the proxy port
+        config.getServerConfig().setProxyPort(port);
+        
+        // Save the config
+        config.saveConfig("config/mod_config.json");
+        
+        source.sendSuccess(() -> Component.literal("Proxy port set to: " + port), true);
+        return 1;
+    }
+    
+    public int executeChatProxyStatus(CommandSourceStack source) {
+        // Load the current config
+        ModConfig config = ModConfig.loadConfig("config/mod_config.json");
+        
+        // Get proxy settings
+        boolean enabled = config.getServerConfig().isUseProxy();
+        String host = config.getServerConfig().getProxyHost();
+        int port = config.getServerConfig().getProxyPort();
+        
+        // Send status message
+        source.sendSuccess(() -> Component.literal("Proxy status:"), false);
+        source.sendSuccess(() -> Component.literal("  Enabled: " + enabled), false);
+        source.sendSuccess(() -> Component.literal("  Host: " + (host.isEmpty() ? "[Not Set]" : host)), false);
+        source.sendSuccess(() -> Component.literal("  Port: " + port), false);
+        
         return 1;
     }
 }

@@ -16,16 +16,21 @@ public class ModConfig {
     // Server configuration
     public static class ServerConfig {
         private boolean enableAntiAddiction = false; // 防沉迷功能默认关闭
-        private String aiChatServerAddress = "why.are.you.here"; // 默认 AI 聊天服务器地址
+        private String aiChatServerAddress = "https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent"; // 默认 Gemini API URL
+        private String apiKey = ""; // API密钥，默认为空
         private int maxPlayTimeMinutes = 60 * 4; // 最大游戏时间，默认 4 小时
         private String playtimeFilePath = "config/playtime.json"; // 游戏时间数据文件路径
         private String resetTime = "05:00:00"; // 每日重置时间，默认早上 5 点
         private int backupIntervalMinutes = 5; // 备份间隔，默认 5 分钟
 
+        // Proxy settings
+        private boolean useProxy = false;
+        private String proxyHost = "";
+        private int proxyPort = 8080;
+
         public ServerConfig() {
             // 默认构造函数，Gson 需要
         }
-
 
         // Getters and Setters for Server Config
         public boolean isEnableAntiAddiction() {
@@ -42,6 +47,14 @@ public class ModConfig {
 
         public void setAiChatServerAddress(String aiChatServerAddress) {
             this.aiChatServerAddress = aiChatServerAddress;
+        }
+
+        public String getApiKey() {
+            return apiKey;
+        }
+
+        public void setApiKey(String apiKey) {
+            this.apiKey = apiKey;
         }
 
         public int getMaxPlayTimeMinutes() {
@@ -76,16 +89,44 @@ public class ModConfig {
             this.backupIntervalMinutes = backupIntervalMinutes;
         }
 
+        // Proxy getters and setters
+        public boolean isUseProxy() {
+            return useProxy;
+        }
+
+        public void setUseProxy(boolean useProxy) {
+            this.useProxy = useProxy;
+        }
+
+        public String getProxyHost() {
+            return proxyHost;
+        }
+
+        public void setProxyHost(String proxyHost) {
+            this.proxyHost = proxyHost;
+        }
+
+        public int getProxyPort() {
+            return proxyPort;
+        }
+
+        public void setProxyPort(int proxyPort) {
+            this.proxyPort = proxyPort;
+        }
 
         @Override
         public String toString() {
             return "ServerConfig{" +
                     "enableAntiAddiction=" + enableAntiAddiction +
                     ", aiChatServerAddress='" + aiChatServerAddress + '\'' +
+                    ", apiKey='" + (apiKey.isEmpty() ? "[Not Set]" : "[Set]") + '\'' +
                     ", maxPlayTimeMinutes=" + maxPlayTimeMinutes +
                     ", playtimeFilePath='" + playtimeFilePath + '\'' +
                     ", resetTime='" + resetTime + '\'' +
                     ", backupIntervalMinutes=" + backupIntervalMinutes +
+                    ", useProxy=" + useProxy +
+                    ", proxyHost='" + proxyHost + '\'' +
+                    ", proxyPort=" + proxyPort +
                     '}';
         }
     }
@@ -222,7 +263,12 @@ public class ModConfig {
         config.getServerConfig().setPlaytimeFilePath("config/my_playtime.json"); // Custom playtime file path
         config.getServerConfig().setResetTime("06:30:00"); // Set reset time to 6:30 AM
         config.getServerConfig().setBackupIntervalMinutes(10); // Set backup interval to 10 minutes
-
+        config.getServerConfig().setApiKey("your_api_key_here"); // Set API key
+        
+        // Set proxy configuration
+        config.getServerConfig().setUseProxy(true); // Enable proxy
+        config.getServerConfig().setProxyHost("proxy.example.com"); // Set proxy host
+        config.getServerConfig().setProxyPort(8080); // Set proxy port
 
         // 3. Add player config
         config.getPlayerConfigs().add(new PlayerConfig(UUID.randomUUID(), "Player1", 3600000, "player1_cf"));
@@ -235,7 +281,6 @@ public class ModConfig {
         ModConfig loadedConfig = ModConfig.loadConfig("config/mod_config.json");
         System.out.println("Loaded Server Config: " + loadedConfig.getServerConfig());
         System.out.println("Loaded Player Configs: " + loadedConfig.getPlayerConfigs());
-
 
         // Example of parsing resetTime string to LocalTime
         String resetTimeStr = loadedConfig.getServerConfig().getResetTime();
